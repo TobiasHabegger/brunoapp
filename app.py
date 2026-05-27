@@ -19,45 +19,51 @@ except KeyError:
 
 # --- SYSTEM PROMPT ---
 SYSTEM_PROMPT = """
-Du bist ein hochpräziser KI-Agent für das automatisierte Umformulieren von Multiple-Choice-Prüfungsfragen. 
-DEINE AUFGABE:
-Der User übergibt dir eine Originalfrage inklusive aller Antwortmöglichkeiten. Du erstellst daraus exakt ZWEI neue, sprachlich und strukturell unterschiedliche Varianten, welche weiterhin exakt dieselbe Kompetenz und denselben Fachinhalt prüfen.
-VORGABEN ZUR UMFORMULIERUNG:
-1. Sprachliche Variation: Verwende neue Satzstrukturen, abwechslungsreiche Verbformen und Synonyme für allgemeine Begriffe. Verzichte auf verschachtelte oder zu komplexe Sätze.
-2. Reihenfolge der Antworten (ABSOLUT ZWINGEND): Die Reihenfolge der Antwortmöglichkeiten MUSS in den beiden neuen Varianten exakt mit der Reihenfolge der Originalvorgabe übereinstimmen. Antwort 1 im Original muss Antwort 1 in deinen Varianten bleiben usw.
-3. Fachbegriffe: Versicherungsspezifische Begriffe und terminologisch übliche Begriffe dürfen NICHT verändert werden! 
-4. Abkürzungen: Versicherungsspezifische Abkürzungen sind auszuschreiben und die Abkürzung ist in Klammern mitzugeben.
-5. Namen: Wenn im Original ein Name vorkommt, ändere diesen in den Varianten.
-6. Anspruchsniveau: Erhöhe, wo möglich, das Anspruchsniveau der Fragen leicht, ohne den Lehrplan-Kontext zu verlassen.
-7. Fallszenarien: Nutze zur Abwechslung bei mindestens einer Variante ein Fallszenario.
-8. Zeitform: Alle Antwortoptionen innerhalb einer Variante müssen in der gleichen Zeitform formuliert sein.
-9. Sprache: Schweizer Hochdeutsch (ä, ö, ü ausschreiben, kein ß sondern ss).
-10. Geschlechtergerechte Sprache: Verwende zwingend die gekürzte Doppelbezeichnung mit Schrägstrich (z.B. Käufer/-in).
+Du bist ein Experte für das Umschreiben von Multiple-Choice-Prüfungsfragen im Versicherungswesen.
 
-OUTPUT-FORMAT (ZWINGEND):
-Du antwortest AUSSCHLIESSLICH mit einem validen JSON-Objekt.
+DEINE REGELN (ABSOLUT ZWINGEND):
+1. Du MUSST die Original-Frage sprachlich neu formulieren.
+2. Du MUSST jede einzelne Original-Antwortmöglichkeit sprachlich neu formulieren (andere Verben, anderer Satzbau, Synonyme). 1:1 Kopien sind streng verboten!
+3. Die inhaltliche Bedeutung und die exakte Reihenfolge der Antworten müssen absolut identisch bleiben. Antwort 1 bleibt Antwort 1.
+4. Fachbegriffe (z.B. VAG, FINMA) bleiben erhalten.
+
+BEISPIEL FÜR DEINE ARBEITSWEISE:
+Original Frage: "Wer überwacht die Versicherungsunternehmen?"
+Original Antwort 1: "Die Eidgenössische Finanzmarktaufsicht (FINMA)."
+Original Antwort 2: "Das Parlament."
+
+Deine Variante 1:
+Frage: "Welche Institution ist für die Kontrolle der Versicherungsgesellschaften zuständig?"
+Antwort 1: "Für diese Aufsicht ist die FINMA (Eidgenössische Finanzmarktaufsicht) verantwortlich."
+Antwort 2: "Die gesetzgebende Behörde (Parlament)."
+
+OUTPUT-FORMAT (NUR JSON):
 {
   "variante_1": {
     "frage": "...",
-    "antworten": ["Antwort 1", "Antwort 2", "..."]
+    "antworten": ["...", "..."]
   },
   "variante_2": {
     "frage": "...",
-    "antworten": ["Antwort 1", "Antwort 2", "..."]
+    "antworten": ["...", "..."]
   }
 }
 """
 
 def generiere_varianten(frage, antworten_liste):
     """Sendet die Frage und Antworten an die OpenAI API."""
-    user_content = f"FRAGE:\n{frage}\n\nANTWORTEN:\n"
+    user_content = f"ORIGINAL-FRAGE:\n{frage}\n\nORIGINAL-ANTWORTEN:\n"
     for idx, ans in enumerate(antworten_liste):
         user_content += f"Antwort {idx + 1}: {ans}\n"
     
+    # Der extra Befehl, der die KI zwingt, aktiv zu werden
+    user_content += "\nBEFEHL: Generiere jetzt das JSON. Formuliere zwingend JEDE EINZELNE Antwort sprachlich neu! Nutze neue Satzstrukturen."
+    
     try:
         response = client.chat.completions.create(
-            model="gpt-4o", # Empfohlen für JSON und System Prompts
+            model="gpt-4o",
             response_format={ "type": "json_object" }, 
+            temperature=0.9, 
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": user_content}
