@@ -69,7 +69,7 @@ def generiere_varianten(frage, antworten_liste):
         return None
 
 # --- STREAMLIT UI ---
-st.title("🎓 Prüfungsfragen-Generator")
+st.title("🎓 Bruno di Brun App")
 st.markdown("""
 Lade hier deine Excel-Liste hoch. Das Tool analysiert die bestehenden Fragen und generiert pro Frage **zwei neue, methodisch korrekte Varianten** mithilfe von KI.
 """)
