@@ -114,6 +114,11 @@ if uploaded_file is not None:
                         status_text.write(f"⏳ Verarbeite ID {orig_id}: {frage[:40]}...")
                         varianten = generiere_varianten(frage, antworten_liste)
                         
+                        # --- NEU: DIAGNOSE-FENSTER ---
+                        with st.expander(f"KI-Output für ID {orig_id} ansehen"):
+                            st.json(varianten)
+                        # -----------------------------
+                        
                         if varianten:
                             try:
                                 df.at[i+1, 'questions/id'] = f"{orig_id}.1"
