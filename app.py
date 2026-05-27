@@ -6,7 +6,7 @@ import time
 import io
 
 # --- SEITENKONFIGURATION ---
-st.set_page_config(page_title="Prüfungsfragen-Generator", page_icon="🎓", layout="centered")
+st.set_page_config(page_title="Bruno di Brun App", page_icon="🎓", layout="centered")
 
 # --- API KEY & CLIENT SETUP ---
 # Greift sicher auf die Streamlit Secrets zu
