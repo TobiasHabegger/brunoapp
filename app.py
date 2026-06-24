@@ -1,15 +1,12 @@
 import streamlit as st
-import pandas as pd
 from openai import OpenAI
 import json
 import time
-import io
 
 # --- SEITENKONFIGURATION ---
 st.set_page_config(page_title="Bruno di Brun App", page_icon="🎓", layout="centered")
 
 # --- API KEY & CLIENT SETUP ---
-# Greift sicher auf die Streamlit Secrets zu
 try:
     API_KEY = st.secrets["OPENAI_API_KEY"]
     client = OpenAI(api_key=API_KEY)
@@ -18,6 +15,7 @@ except KeyError:
     st.stop()
 
 # --- SYSTEM PROMPT ---
+# (Dein bestehender Prompt bleibt absolut identisch)
 SYSTEM_PROMPT = """
 Du bist ein Experte für das Umschreiben von Multiple-Choice-Prüfungsfragen im Versicherungswesen.
 
@@ -55,8 +53,7 @@ def generiere_varianten(frage, antworten_liste):
     user_content = f"ORIGINAL-FRAGE:\n{frage}\n\nORIGINAL-ANTWORTEN:\n"
     for idx, ans in enumerate(antworten_liste):
         user_content += f"Antwort {idx + 1}: {ans}\n"
-    
-    # Der extra Befehl, der die KI zwingt, aktiv zu werden
+        
     user_content += "\nBEFEHL: Generiere jetzt das JSON. Formuliere zwingend JEDE EINZELNE Antwort sprachlich neu! Nutze neue Satzstrukturen."
     
     try:
@@ -77,11 +74,11 @@ def generiere_varianten(frage, antworten_liste):
 # --- STREAMLIT UI ---
 st.title("🎓 Bruno di Brun App")
 st.markdown("""
-Lade hier deine Excel-Liste hoch. Das Tool analysiert die bestehenden Fragen und generiert pro Frage **zwei neue, methodisch korrekte Varianten** mithilfe von KI.
+Lade hier deine JSON-Datei hoch. Das Tool analysiert die bestehenden Fragen und generiert pro Frage **zwei neue, methodisch korrekte Varianten** (Fragetexte und Antworten) direkt in die dafür vorgesehenen Datenfelder.
 """)
 
-# 1. Datei Upload Widget
-uploaded_file = st.file_uploader("Wähle eine Excel-Datei (.xlsx)", type=['xlsx'])
+# 1. Datei Upload Widget - nur noch für JSON
+uploaded_file = st.file_uploader("Wähle eine JSON-Datei (.json)", type=['json'])
 
 if uploaded_file is not None:
     st.success(f"Datei '{uploaded_file.name}' erfolgreich geladen!")
@@ -89,73 +86,82 @@ if uploaded_file is not None:
     # 2. Button zum Starten
     if st.button("🚀 Verarbeitung starten", type="primary"):
         
-        with st.status("Verarbeite Excel-Datei...", expanded=True) as status:
-            df = pd.read_excel(uploaded_file)
-            df['questions/id'] = df['questions/id'].astype(str)
-            
-            # Zählen wie viele Fragen wir bearbeiten müssen (für die Progress Bar)
-            total_rows = len(df)
+        with st.status("Verarbeite JSON-Datei...", expanded=True) as status:
+            try:
+                # JSON nativ einlesen
+                data = json.load(uploaded_file)
+            except Exception as e:
+                st.error(f"Fehler beim Lesen der JSON-Datei: {e}")
+                st.stop()
+                
+            if "questions" not in data or not isinstance(data["questions"], list):
+                st.error("Fehler: Das JSON-File enthält kein gültiges 'questions'-Array.")
+                st.stop()
+                
+            questions_list = data["questions"]
+            total_rows = len(questions_list)
             updates_gemacht = 0
             
             progress_bar = st.progress(0)
             status_text = st.empty()
 
-            # Verarbeitungs-Schleife
-            for i in range(len(df)):
+            # Verarbeitungs-Schleife durch das JSON-Array
+            for i, q in enumerate(questions_list):
                 # Fortschritt aktualisieren
                 progress_bar.progress((i + 1) / total_rows)
                 
-                if pd.notna(df.iloc[i].get('questions/title')):
-                    if i + 2 < len(df) and pd.isna(df.iloc[i+1].get('questions/title')) and pd.isna(df.iloc[i+2].get('questions/title')):
+                frage = q.get("title", "")
+                orig_id = q.get("id", f"Unbekannt ({i})")
+                
+                # Wenn kein Titel da ist, überspringen
+                if not frage:
+                    continue
+                    
+                # Antworten aus dem aktuellen Fragen-Objekt extrahieren
+                answers_obj_list = q.get("answers", [])
+                antworten_liste = [ans.get("content", "") for ans in answers_obj_list if isinstance(ans, dict)]
+                
+                status_text.write(f"⏳ Verarbeite ID {orig_id}: {frage[:40]}...")
+                
+                # KI aufrufen
+                varianten = generiere_varianten(frage, antworten_liste)
+                
+                if varianten:
+                    try:
+                        # 1. Fragentexte befüllen (title_variants als String-Array)
+                        q["title_variants"] = [
+                            varianten['variante_1']['frage'],
+                            varianten['variante_2']['frage']
+                        ]
                         
-                        orig_id = str(df.iloc[i]['questions/id']).replace('.0', '')
-                        frage = df.iloc[i]['questions/title']
-                        
-                        antworten_liste = []
-                        for j in range(6):
-                            col = f'questions/answers/{j}/content'
-                            if col in df.columns and pd.notna(df.iloc[i][col]):
-                                antworten_liste.append(df.iloc[i][col])
-                        
-                        status_text.write(f"⏳ Verarbeite ID {orig_id}: {frage[:40]}...")
-                        varianten = generiere_varianten(frage, antworten_liste)
-                        
-                        if varianten:
-                            try:
-                                df.at[i+1, 'questions/id'] = f"{orig_id}.1"
-                                df.at[i+1, 'questions/title'] = varianten['variante_1']['frage']
-                                for idx, neue_antwort in enumerate(varianten['variante_1']['antworten']):
-                                    if idx < 6:
-                                        df.at[i+1, f'questions/answers/{idx}/content'] = neue_antwort
+                        # 2. Antworttexte befüllen (content_variants pro Antwort als String-Array)
+                        for idx, ans_obj in enumerate(answers_obj_list):
+                            if isinstance(ans_obj, dict):
+                                # Absicherung, falls die KI weniger Antworten liefert als im Original vorhanden
+                                v1_ans = varianten['variante_1']['antworten'][idx] if idx < len(varianten['variante_1']['antworten']) else ""
+                                v2_ans = varianten['variante_2']['antworten'][idx] if idx < len(varianten['variante_2']['antworten']) else ""
                                 
-                                df.at[i+2, 'questions/id'] = f"{orig_id}.2"
-                                df.at[i+2, 'questions/title'] = varianten['variante_2']['frage']
-                                for idx, neue_antwort in enumerate(varianten['variante_2']['antworten']):
-                                    if idx < 6:
-                                        df.at[i+2, f'questions/answers/{idx}/content'] = neue_antwort
-                                        
-                                updates_gemacht += 1
-                                time.sleep(0.5) # Kurze Pause gegen Rate-Limits
-                            except KeyError as e:
-                                st.warning(f"Warnung bei ID {orig_id}: JSON-Struktur nicht wie erwartet ({e})")
+                                ans_obj["content_variants"] = [v1_ans, v2_ans]
+                                
+                        updates_gemacht += 1
+                        time.sleep(0.5) # Kurze Pause gegen Rate-Limits
+                    except (KeyError, IndexError, TypeError) as e:
+                        st.warning(f"Warnung bei ID {orig_id}: JSON-Struktur der KI entspricht nicht den Erwartungen ({e})")
             
             status.update(label="Verarbeitung abgeschlossen!", state="complete", expanded=False)
 
         if updates_gemacht > 0:
-            st.success(f"🎉 Fertig! Es wurden {updates_gemacht} Fragen umformuliert.")
+            st.success(f"🎉 Fertig! Es wurden {updates_gemacht} Fragen und deren Antworten umformuliert.")
             
-            # 3. Download Vorbereitung (In Memory)
-            output = io.BytesIO()
-            with pd.ExcelWriter(output, engine='openpyxl') as writer:
-                df.to_excel(writer, index=False)
-            processed_data = output.getvalue()
+            # 3. Download Vorbereitung (Direkt als formatierter JSON-String)
+            processed_data = json.dumps(data, ensure_ascii=False, indent=2)
             
             # 4. Download Button
             st.download_button(
-                label="📥 Fertige Excel-Datei herunterladen",
+                label="📥 Fertige JSON-Datei herunterladen",
                 data=processed_data,
-                file_name=uploaded_file.name.replace(".xlsx", "_Fertig.xlsx"),
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+                file_name=uploaded_file.name.replace(".json", "_Fertig.json"),
+                mime="application/json"
             )
         else:
-            st.info("Es wurden keine leeren Zeilen zur Generierung gefunden. Bitte prüfe die Struktur deiner Excel-Datei.")
+            st.info("Es wurden keine gültigen Fragen zur Bearbeitung gefunden.")
