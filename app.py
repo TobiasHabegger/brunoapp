@@ -4,7 +4,7 @@ import json
 import time
 
 # --- SEITENKONFIGURATION ---
-st.set_page_config(page_title="bruno di liran App", page_icon="🎓", layout="centered")
+st.set_page_config(page_title="Bruno di Brun App", page_icon="🎓", layout="centered")
 
 # --- API KEY & CLIENT SETUP ---
 try:
@@ -73,7 +73,7 @@ def generiere_varianten(frage, antworten_liste):
 
 
 # --- STREAMLIT UI ---
-st.title("🎓 bruno di liran App")
+st.title("🎓 Bruno di Brun App")
 st.markdown("""
 Lade hier deine JSON-Datei hoch. Das Tool analysiert die bestehenden Fragen und generiert pro Frage **zwei neue, methodisch korrekte Varianten** (Fragetexte und Antworten) direkt in die dafür vorgesehenen Datenfelder.
 """)
